@@ -10,6 +10,7 @@
 #include <iostream>
 #include <vector>
 
+#define num_thr 4
 
 double rotate(const Point& p, const Point& q, const Point& i) {
   return (q.x - p.x) * (i.y - q.y) - (q.y - p.y) * (i.x - q.x);
@@ -38,7 +39,7 @@ std::vector<Point> buildHull_seq(std::vector<Point> m_set) {
   return hull;
 }
 
-class reduce_ {
+/*class reduce_ {
   std::vector<Point> m_set_;
   std::vector<Point> hull_;
   Point left_point_;
@@ -88,10 +89,57 @@ std::vector<Point> buildHull_tbb(std::vector<Point> m_set) {
     hull.push_back(left_point);
     end_point = m_set[0];
     reduce_ r(m_set, hull);
-    tbb::parallel_reduce(tbb::blocked_range<size_t>(0, size), r);
+    tbb::task_scheduler_init init(num_thr);
+    int grainsize = size / num_thr + size % num_thr;
+    tbb::parallel_reduce(tbb::blocked_range<size_t>(0, size, grainsize), r);
+    init.terminate();
     end_point = r.getPoint();
     left_point = end_point;
   } while (end_point != hull[0]);
+  return hull;
+}
+*/
+
+std::vector<std::vector<Point>> splitVector(const std::vector<Point>& vec,
+                                            size_t n) {
+  std::vector<std::vector<Point>> outVec;
+  size_t length = vec.size() / n;
+  size_t remain = vec.size() % n;
+  size_t begin = 0;
+  size_t end = 0;
+
+  for (size_t i = 0; i < fmin(n, vec.size()); ++i) {
+    end += (remain > 0) ? (length + !!(remain--)) : length;
+    outVec.push_back(
+        std::vector<Point>(vec.begin() + begin, vec.begin() + end));
+    begin = end;
+  }
+  return outVec;
+}
+
+std::vector<Point> mergeVector(std::vector<std::vector<Point>> vec) {
+  std::vector<Point> res;
+
+  for (auto i : vec) {
+    res.insert(res.end(), i.begin(), i.end());
+  }
+  res = buildHull_seq(res);
+  return res;
+}
+
+std::vector<Point> buildHull_tbb(std::vector<Point> m_set) {
+  std::vector<std::vector<Point>> vec = splitVector(m_set, num_thr);
+  std::vector<Point> hull;
+  tbb::task_scheduler_init init(num_thr);
+  tbb::parallel_for(
+      tbb::blocked_range<size_t>(0, vec.size(), 1),
+      [&vec](const tbb::blocked_range<size_t>& r) {
+        int begin = r.begin(), end = r.end();
+        for (int i = begin; i != end; ++i) vec[i] = buildHull_seq(vec[i]);
+      },
+      tbb::simple_partitioner());
+  init.terminate();
+  hull = mergeVector(vec);
   return hull;
 }
 
