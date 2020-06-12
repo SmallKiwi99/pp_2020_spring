@@ -18,10 +18,8 @@ double rotate(const Point& p, const Point& q, const Point& i) {
 
 std::vector<Point> buildHull_seq(std::vector<Point> m_set) {
   if (m_set.size() < 3) throw - 1;
-  Point left_point =
-      *std::min_element(m_set.begin(), m_set.end(), [](Point a, Point b) {
-        return (a.y < b.y) || (a.y == b.y && a.x < b.x);
-      });
+  Point left_point = *std::min_element(
+      m_set.begin(), m_set.end(), [](Point a, Point b) { return (a < b); });
 
   std::vector<Point> hull;
   Point end_point;
@@ -69,9 +67,9 @@ std::vector<Point> buildHull_seq(std::vector<Point> m_set) {
   }
 
   Point getPoint() { return res; }
-};
+};*/
 
-std::vector<Point> buildHull_tbb(std::vector<Point> m_set) {
+/*std::vector<Point> buildHull_tbb(std::vector<Point> m_set) {
   int size = m_set.size();
   if (size < 3) throw - 1;
   Point left_point;
@@ -119,27 +117,51 @@ std::vector<std::vector<Point>> splitVector(const std::vector<Point>& vec,
 
 std::vector<Point> mergeVector(std::vector<std::vector<Point>> vec) {
   std::vector<Point> res;
-
+  std::cout << "lol";
   for (auto i : vec) {
-    res.insert(res.end(), i.begin(), i.end());
+    for (auto j : i) {
+      res.push_back(j);
+    }
   }
+
   res = buildHull_seq(res);
   return res;
 }
 
+class pTbb {
+  const std::vector<std::vector<Point>>& vec;
+  std::vector<std::vector<Point>>* res;
+
+ public:
+  pTbb(const std::vector<std::vector<Point>>& vec_,
+       std::vector<std::vector<Point>>* res_)
+      : vec(vec_), res(res_) {}
+  void operator()(const tbb::blocked_range<size_t>& r) const {
+    for (auto i = r.begin(); i != r.end(); i++) {
+      res->push_back(buildHull_seq(vec[i]));
+    }  //здесь все ок
+  }
+};
+
 std::vector<Point> buildHull_tbb(std::vector<Point> m_set) {
   std::vector<std::vector<Point>> vec = splitVector(m_set, num_thr);
   std::vector<Point> hull;
-  tbb::task_scheduler_init init(num_thr);
-  tbb::parallel_for(
-      tbb::blocked_range<size_t>(0, vec.size(), 1),
-      [&vec](const tbb::blocked_range<size_t>& r) {
-        int begin = r.begin(), end = r.end();
-        for (int i = begin; i != end; ++i) vec[i] = buildHull_seq(vec[i]);
-      },
-      tbb::simple_partitioner());
-  init.terminate();
-  hull = mergeVector(vec);
+  /*tbb::parallel_for(tbb::blocked_range<size_t>(0, vec.size(), 1),
+                    [&vec, &res](const tbb::blocked_range<size_t>& r) {
+                      int begin = r.begin(), end = r.end();
+                      for (int i = begin; i != end; ++i)
+                        res.push_back(buildHull_seq(vec[i]));
+                    });*/
+
+  std::vector<std::vector<Point>> res;
+  tbb::parallel_for(tbb::blocked_range<size_t>(0, vec.size()), pTbb(vec, &res));
+  for (auto i : res) {  //этот вывод не работает уже
+    for (auto j : i) {
+      std::cout << j.x << " " << j.y << " ";
+    }
+    std::cout << std::endl;
+  }
+  hull = mergeVector(res);
   return hull;
 }
 
